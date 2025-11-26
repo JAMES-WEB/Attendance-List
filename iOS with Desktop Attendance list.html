@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Attendance Tool (Instant Action)</title>
+    
+    <style>
+        :root {
+            --primary: #007aff; 
+            --danger: #ff3b30; 
+            --success: #34c759;
+            --orange: #ff9500;
+            --purple: #5856d6;
+            --bg: #f2f2f7; 
+            --card: #ffffff; 
+            --border: #c6c6c8;
+        }
+
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; 
+            background: var(--bg); 
+            margin: 0; padding: 15px; padding-bottom: 80px; 
+            -webkit-text-size-adjust: 100%;
+            color: #000;
+        }
+
+        .card { 
+            background: var(--card); 
+            border-radius: 12px; 
+            padding: 16px; 
+            margin-bottom: 15px; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1); 
+        }
+
+        h2 { font-size: 1.3rem; margin-top: 0; margin-bottom: 10px; }
+        h3 { font-size: 0.9rem; color: #666; text-transform: uppercase; margin-top: 0; }
+        
+        .tabs { display: flex; background: #e3e3e8; border-radius: 9px; padding: 2px; margin-bottom: 15px; }
+        .tab-btn { 
+            flex: 1; border: none; background: transparent; padding: 8px; 
+            border-radius: 7px; font-weight: 600; font-size: 0.9rem; cursor: pointer; color: #000;
+        }
+        .tab-btn.active { background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+        .view { display: none; }
+        .view.active { display: block; }
+
+        .row { display: flex; gap: 10px; margin-bottom: 12px; }
+        input { 
+            flex: 1; padding: 12px; border: 1px solid #d1d1d6; 
+            border-radius: 8px; font-size: 16px; 
+            background: #fff; -webkit-appearance: none;
+        }
+        
+        button, .file-btn { 
+            display: block; width: 100%; box-sizing: border-box; text-align: center;
+            padding: 12px 16px; border: none; border-radius: 8px; 
+            font-size: 1rem; font-weight: 600; color: white; cursor: pointer; 
+            flex-shrink: 0; -webkit-appearance: none; text-decoration: none;
+            margin-bottom: 10px;
+        }
+        
+        .row button { width: auto; margin-bottom: 0; } 
+
+        .btn-blue { background: var(--primary); }
+        .btn-red { background: var(--danger); }
+        .btn-orange { background: var(--orange); }
+        .btn-purple { background: var(--purple); }
+        .btn-gray { background: #8e8e93; }
+
+        .grid-container { 
+            overflow: auto; max-height: 60vh; 
+            border: 1px solid var(--border); border-radius: 8px; 
+            background: #fff; position: relative;
+            -webkit-overflow-scrolling: touch; 
+        }
+        
+        .grid-table { border-collapse: separate; border-spacing: 0; width: 100%; }
+        
+        td, th { 
+            border-right: 1px solid #e5e5ea; border-bottom: 1px solid #e5e5ea; 
+            padding: 0; height: 50px; min-width: 60px; text-align: center; 
+            position: relative;
+        }
+
+        th.sticky-top { position: sticky; top: 0; background: #f2f2f7; z-index: 10; font-weight: 600; border-bottom: 2px solid #d1d1d6; }
+        td.sticky-left { position: sticky; left: 0; background: #f2f2f7; z-index: 9; font-weight: 600; border-right: 2px solid #d1d1d6; min-width: 100px; text-align: left; padding-left: 10px;}
+        th.sticky-corner { position: sticky; top: 0; left: 0; z-index: 11; background: #d1d1d6; }
+
+        .check-area { 
+            width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; 
+            font-size: 1.4rem; cursor: pointer;
+        }
+        .check-area.checked { color: var(--success); background: #e8fce8; }
+        
+        .del-x { color: #ff3b30; font-weight: bold; margin-left: 8px; font-size: 1.2rem; cursor: pointer; padding: 5px; }
+    </style>
+</head>
+<body>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="showTab('grid')">Attendance</button>
+        <button class="tab-btn" onclick="showTab('settings')">Files & Reset</button>
+    </div>
+
+    <!-- GRID VIEW -->
+    <div id="view-grid" class="view active">
+        <div class="card">
+            <div class="row">
+                <input type="text" id="new-name" placeholder="Name">
+                <button class="btn-blue" onclick="addName()">Add</button>
+            </div>
+            <div class="row">
+                <input type="text" id="new-item" placeholder="Date/Item">
+                <button class="btn-blue" onclick="addItem()">Add</button>
+            </div>
+        </div>
+
+        <div class="grid-container">
+            <table class="grid-table" id="table-render"></table>
+        </div>
+        <p style="text-align:center; color:#8e8e93; font-size:0.8rem; margin-top:10px;">Tap cells to toggle checkmarks</p>
+    </div>
+
+    <!-- SETTINGS VIEW -->
+    <div id="view-settings" class="view">
+        <div class="card">
+            <h3>Backup / Transfer</h3>
+            <button class="btn-orange" onclick="downloadBackup()">💾 Save Backup File</button>
+            <label class="file-btn btn-gray">
+                📂 Load Backup File
+                <input type="file" accept=".json" onchange="restoreBackup(this)" hidden>
+            </label>
+        </div>
+
+        <div class="card">
+            <h3>Export Data</h3>
+            <button class="btn-purple" onclick="downloadCSV()">📄 Download CSV</button>
+        </div>
+
+        <div class="card" style="border: 1px solid #ff3b30;">
+            <h3 style="color:#ff3b30">Danger Zone</h3>
+            <!-- RESET BUTTON -->
+            <button class="btn-red" onclick="resetAll()">⚠️ Wipe ALL Local Storage</button>
+        </div>
+    </div>
+
+<script>
+    let data = { names: [], items: [], checks: {} };
+    const KEY = 'safari_tracker_v3';
+
+    window.onload = function() {
+        const saved = localStorage.getItem(KEY);
+        if(saved) {
+            try { data = JSON.parse(saved); } catch(e) { console.error(e); }
+        }
+        render();
+    };
+
+    function save() {
+        localStorage.setItem(KEY, JSON.stringify(data));
+    }
+
+    function showTab(name) {
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.getElementById('view-' + name).classList.add('active');
+        if(name === 'grid') document.querySelectorAll('.tab-btn')[0].classList.add('active');
+        else document.querySelectorAll('.tab-btn')[1].classList.add('active');
+    }
+
+    function addName() {
+        const input = document.getElementById('new-name');
+        const val = input.value.trim();
+        if(!val) return;
+        data.names.push(val);
+        input.value = '';
+        save();
+        render();
+    }
+
+    function addItem() {
+        const input = document.getElementById('new-item');
+        let val = input.value.trim();
+        if(!val) return;
+        if(val.toLowerCase() === 'today') {
+            let d = new Date();
+            val = d.getDate() + '/' + (d.getMonth()+1);
+        }
+        data.items.push(val);
+        input.value = '';
+        save();
+        render();
+    }
+
+    function toggle(name, item) {
+        const k = name + '|' + item;
+        data.checks[k] = !data.checks[k];
+        save();
+        render();
+    }
+
+    // --- INSTANT DELETE (No Confirmation) ---
+    function deleteData(type, idx) {
+        if(type === 'name') data.names.splice(idx, 1);
+        if(type === 'item') data.items.splice(idx, 1);
+        save();
+        render();
+    }
+
+    // --- INSTANT FULL WIPE (No Confirmation) ---
+    function resetAll() {
+        // 1. Wipe EVERYTHING in Local Storage
+        localStorage.clear(); 
+        
+        // 2. Reset App State
+        data = { names: [], items: [], checks: {} };
+        
+        // 3. Update Screen
+        render();
+        
+        // Optional: Small notification so you know it happened
+        alert("Local Storage completely wiped."); 
+    }
+
+    function render() {
+        const table = document.getElementById('table-render');
+        let html = '';
+
+        if(data.names.length === 0 && data.items.length === 0) {
+            table.innerHTML = '<tr><td style="padding:20px; text-align:center; color:#888">Add names/dates above</td></tr>';
+            return;
+        }
+
+        html += '<thead><tr>';
+        html += '<th class="sticky-corner">Names</th>';
+        data.items.forEach((item, i) => {
+            html += `<th class="sticky-top">${item} <span class="del-x" onclick="deleteData('item', ${i})">×</span></th>`;
+        });
+        html += '</tr></thead>';
+
+        html += '<tbody>';
+        data.names.forEach((name, i) => {
+            html += '<tr>';
+            html += `<td class="sticky-left">${name} <span class="del-x" onclick="deleteData('name', ${i})">×</span></td>`;
+            data.items.forEach(item => {
+                const k = name + '|' + item;
+                const isChecked = data.checks[k];
+                html += `<td onclick="toggle('${name}','${item}')">`;
+                html += `<div class="check-area ${isChecked ? 'checked' : ''}">${isChecked ? '✔' : ''}</div>`;
+                html += `</td>`;
+            });
+            html += '</tr>';
+        });
+        html += '</tbody>';
+
+        table.innerHTML = html;
+    }
+
+    function downloadBackup() {
+        const dataStr = JSON.stringify(data);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `attendance_${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 100);
+    }
+
+    function restoreBackup(input) {
+        const file = input.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const parsed = JSON.parse(e.target.result);
+                if(parsed.names && parsed.items) {
+                    data = parsed;
+                    save();
+                    render();
+                    alert("Restored!");
+                }
+            } catch(err) {}
+        };
+        reader.readAsText(file);
+        input.value = '';
+    }
+
+    function downloadCSV() {
+        let csv = "Names," + data.items.join(",") + "\n";
+        data.names.forEach(name => {
+            let row = [name];
+            data.items.forEach(item => {
+                const k = name + '|' + item;
+                row.push(data.checks[k] ? "Present" : "Absent");
+            });
+            csv += row.join(",") + "\n";
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'attendance.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+</script>
+</body>
+</html>
