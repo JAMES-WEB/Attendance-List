@@ -251,7 +251,7 @@
         db.names.forEach(name => {
             let row = [name];
             db.items.forEach(item => {
-                row.push(db.checks[name + '_' + item] ? "Present" : "Absent");
+                row.push(db.checks[name + '_' + item] ? "⛔" : "✅");
             });
             csv += row.join(",") + "\n";
         });
