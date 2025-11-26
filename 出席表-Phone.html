@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Attendance Tool + Restore</title>
+    
+    <!-- Excel Library (Optional) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        :root {
+            --blue: #007aff; --red: #ff3b30; --gray: #f2f2f7; --border: #c6c6c8;
+            --orange: #ff9500; --purple: #5856d6;
+        }
+
+        body { font-family: -apple-system, sans-serif; background: var(--gray); margin: 0; padding: 15px; color: #000; padding-bottom: 50px; }
+        
+        .card { background: white; padding: 15px; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
+        .row { display: flex; gap: 10px; margin-bottom: 10px; }
+        
+        input { flex: 1; padding: 12px; border: 1px solid #ccc; border-radius: 8px; font-size: 16px; -webkit-appearance: none; }
+        
+        button, .file-btn { 
+            padding: 12px; border: none; border-radius: 8px; 
+            font-size: 1rem; font-weight: 600; color: white; 
+            cursor: pointer; -webkit-appearance: none;
+            display: flex; justify-content: center; align-items: center; width: 100%;
+            text-decoration: none; box-sizing: border-box; text-align: center;
+        }
+
+        .btn-blue { background: var(--blue); }
+        .btn-red { background: var(--red); }
+        .btn-csv { background: var(--purple); margin-bottom: 8px; }
+        .btn-print { background: #34c759; margin-bottom: 8px; }
+        
+        /* Backup Buttons */
+        .btn-backup { background: var(--orange); margin-bottom: 8px; }
+        .btn-restore { background: #8e8e93; position: relative; overflow: hidden; }
+        
+        /* Grid */
+        .grid-wrap { overflow: auto; border: 1px solid var(--border); border-radius: 8px; background: white; max-height: 60vh; }
+        table { border-collapse: collapse; width: 100%; min-width: 300px; }
+        th, td { border: 1px solid #e5e5ea; padding: 0; height: 50px; text-align: center; min-width: 60px; position: relative; }
+
+        /* Sticky Headers */
+        th { background: #e5e5ea; font-weight: 600; position: sticky; top: 0; z-index: 10; }
+        td:first-child { position: sticky; left: 0; background: #f9f9f9; z-index: 5; text-align: left; padding-left: 10px; font-weight: 500; min-width: 100px; border-right: 2px solid #d1d1d6; }
+        th:first-child { position: sticky; left: 0; z-index: 15; background: #d1d1d6; border-right: 2px solid #999; }
+
+        .check-box { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+        .checked { background: #e8fce8; color: #34c759; }
+        .del { color: red; font-size: 1.2rem; margin-left: 5px; cursor: pointer; }
+
+        @media print {
+            body { background: white; padding: 0; }
+            .no-print { display: none !important; }
+            .grid-wrap { border: none; max-height: none; overflow: visible; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="no-print">
+        <h2 style="margin-top:0">Attendance + Restore</h2>
+        
+        <!-- Input Section -->
+        <div class="card">
+            <div class="row">
+                <input type="text" id="nameInput" placeholder="Name">
+                <button class="btn-blue" style="width:auto; min-width:80px;" onclick="add('names', 'nameInput')">Add</button>
+            </div>
+            <div class="row">
+                <input type="text" id="itemInput" placeholder="Date">
+                <button class="btn-blue" style="width:auto; min-width:80px;" onclick="add('items', 'itemInput')">Add</button>
+            </div>
+        </div>
+
+        <!-- Action Section -->
+        <div class="card">
+            <h3 style="margin-top:0; font-size:0.9rem; color:#666; text-transform:uppercase;">Files & Printing</h3>
+            
+            <!-- 1. Print -->
+            <button class="btn-print" onclick="window.print()">🖨️ Print / Save PDF</button>
+            
+            <!-- 2. Backup System (NEW) -->
+            <div style="border: 1px dashed #ccc; padding: 10px; border-radius: 8px; margin-bottom: 10px; background: #f9f9f9;">
+                <p style="margin:0 0 5px 0; font-size:0.8rem; color:#555; text-align:center;"><strong>Backup & Restore</strong><br>(Use this to move data to another phone)</p>
+                <button class="btn-backup" onclick="downloadBackup()">💾 Save Backup File (.json)</button>
+                
+                <!-- Hidden file input triggered by label -->
+                <label class="file-btn btn-restore">
+                    📂 Load Backup File
+                    <input type="file" accept=".json" onchange="restoreBackup(this)" hidden>
+                </label>
+            </div>
+
+            <!-- 3. Exports -->
+            <button class="btn-csv" onclick="downloadCSV()">📄 Download CSV</button>
+            <button class="btn-blue" style="width:100%; margin-bottom:15px;" onclick="downloadExcel()">📊 Download Excel</button>
+
+            <!-- 4. Reset -->
+            <div style="border-top:1px solid #eee; padding-top:10px;">
+                <button class="btn-red" onclick="wipeData()">⚠️ Reset All Data</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- The Data Grid -->
+    <div class="grid-wrap">
+        <table id="grid"></table>
+    </div>
+
+<script>
+    // --- 1. CORE DATA ---
+    let db = { names: [], items: [], checks: {} };
+    const KEY = 'attend_db_v5';
+    
+    window.onload = () => {
+        const saved = localStorage.getItem(KEY);
+        if(saved) db = JSON.parse(saved);
+        draw();
+    };
+
+    function save() {
+        localStorage.setItem(KEY, JSON.stringify(db));
+    }
+
+    // --- 2. LOGIC ---
+    function add(type, inputId) {
+        const input = document.getElementById(inputId);
+        let val = input.value.trim();
+        if(!val) return;
+
+        if(type === 'items' && val.toLowerCase() === 'today') {
+            const d = new Date();
+            val = d.getDate() + '/' + (d.getMonth() + 1);
+        }
+
+        db[type].push(val);
+        input.value = '';
+        save();
+        draw();
+    }
+
+    function toggle(key) {
+        db.checks[key] = !db.checks[key];
+        save();
+        draw();
+    }
+
+    function remove(type, index) {
+        if(confirm('Delete?')) {
+            db[type].splice(index, 1);
+            save();
+            draw();
+        }
+    }
+
+    function wipeData() {
+        if(confirm("Are you sure? This deletes everything immediately.")) {
+            localStorage.removeItem(KEY);
+            db = { names: [], items: [], checks: {} };
+            draw();
+        }
+    }
+
+    // --- 3. DRAWING ---
+    function draw() {
+        const t = document.getElementById('grid');
+        let html = '';
+
+        if(db.names.length === 0 && db.items.length === 0) {
+            t.innerHTML = '<tr><td style="padding:20px; color:#888;">No data. Add Name above.</td></tr>';
+            return;
+        }
+
+        html += '<thead><tr><th>Names</th>';
+        db.items.forEach((item, i) => {
+            html += `<th>${item} <span class="del no-print" onclick="remove('items', ${i})">×</span></th>`;
+        });
+        html += '</tr></thead>';
+
+        html += '<tbody>';
+        db.names.forEach((name, i) => {
+            html += `<tr>`;
+            html += `<td>${name} <span class="del no-print" onclick="remove('names', ${i})">×</span></td>`;
+            db.items.forEach(item => {
+                const key = name + '_' + item;
+                const isChecked = db.checks[key];
+                html += `<td onclick="toggle('${key}')">
+                            <div class="check-box ${isChecked ? 'checked' : ''}">
+                                ${isChecked ? '✔' : ''}
+                            </div>
+                         </td>`;
+            });
+            html += `</tr>`;
+        });
+        html += '</tbody>';
+        t.innerHTML = html;
+    }
+
+    // --- 4. EXPORTS & BACKUPS ---
+
+    // A. NEW: DOWNLOAD BACKUP (JSON)
+    function downloadBackup() {
+        const dataStr = JSON.stringify(db);
+        const blob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `attendance_backup_${new Date().toISOString().slice(0,10)}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    // B. NEW: RESTORE BACKUP
+    function restoreBackup(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            try {
+                const content = e.target.result;
+                const parsed = JSON.parse(content);
+
+                // Simple validation to ensure it's the right file type
+                if(parsed.names && parsed.items && parsed.checks) {
+                    if(confirm("Restore data? This will overwrite current list.")) {
+                        db = parsed;
+                        save();
+                        draw();
+                        alert("Restored successfully!");
+                    }
+                } else {
+                    alert("Invalid file format.");
+                }
+            } catch(err) {
+                alert("Error reading file: " + err);
+            }
+        };
+        reader.readAsText(file);
+        input.value = ''; // Reset input so you can load same file again if needed
+    }
+
+    // C. CSV Export
+    function downloadCSV() {
+        let csv = "Names," + db.items.join(",") + "\n";
+        db.names.forEach(name => {
+            let row = [name];
+            db.items.forEach(item => {
+                row.push(db.checks[name + '_' + item] ? "Present" : "Absent");
+            });
+            csv += row.join(",") + "\n";
+        });
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'attendance.csv';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+    }
+
+    // D. Excel Export
+    function downloadExcel() {
+        if(typeof XLSX === 'undefined') return alert("Excel library missing. Use CSV.");
+        const rows = [];
+        rows.push(["Names", ...db.items]);
+        db.names.forEach(name => {
+            const r = [name];
+            db.items.forEach(item => r.push(db.checks[name + '_' + item] ? "P" : ""));
+            rows.push(r);
+        });
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet(rows);
+        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+        XLSX.writeFile(wb, "attendance.xlsx");
+    }
+</script>
+</body>
+</html>
