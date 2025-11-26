@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Tracker - Final Tested Version</title>
+    
+    <!-- 1. External Libraries (Stable Versions) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+    
+    <!-- 2. Styling -->
+    <style>
+        :root {
+            --primary: #6366f1; --primary-hover: #4f46e5;
+            --danger: #ef4444; --success: #22c55e;
+            --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0;
+            --text: #1e293b;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+        
+        body { background: var(--bg); color: var(--text); padding: 20px; line-height: 1.5; }
+        .container { max-width: 1200px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        
+        /* Header & Tabs */
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .tabs { display: flex; gap: 10px; }
+        .tab-btn { background: none; border: none; padding: 10px 20px; cursor: pointer; font-weight: 600; color: #64748b; border-radius: 6px; }
+        .tab-btn.active { background: var(--primary); color: white; }
+        .view { display: none; flex-direction: column; gap: 20px; }
+        .view.active { display: flex; }
+
+        /* Cards */
+        .card { background: var(--card); padding: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .card h3 { margin-bottom: 15px; font-size: 0.95rem; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b; }
+        
+        /* Inputs & Buttons */
+        .controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; }
+        .row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
+        input { flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 6px; outline: none; }
+        input:focus { border-color: var(--primary); box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2); }
+        
+        button, .file-label { padding: 10px 16px; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; color: white; font-size: 0.9rem; transition: opacity 0.2s; display: inline-flex; align-items: center; justify-content: center; }
+        button:hover { opacity: 0.9; }
+        .btn-primary { background: var(--primary); }
+        .btn-success { background: var(--success); }
+        .btn-danger { background: var(--danger); }
+        .file-label { background: #3b82f6; }
+
+        /* Grid System */
+        .grid-wrapper { overflow-x: auto; background: var(--card); border-radius: 12px; border: 1px solid var(--border); }
+        .grid { display: grid; /* Columns set via JS */ border-collapse: collapse; min-width: 100%; }
+        
+        .cell { padding: 12px; border: 1px solid var(--border); min-width: 100px; display: flex; align-items: center; justify-content: center; position: relative; }
+        .cell-header { background: #f1f5f9; font-weight: 600; justify-content: space-between; gap: 5px; }
+        .cell-check { cursor: pointer; font-size: 1.5rem; user-select: none; transition: background 0.1s; }
+        .cell-check:hover { background: #f0fdf4; }
+        .cell-check.checked { color: var(--success); background: #dcfce7; }
+        
+        .remove-btn { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1.2rem; padding: 0 4px; display: flex; align-items: center; }
+        .remove-btn:hover { color: var(--danger); }
+
+        /* History Table */
+        table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid var(--border); }
+        th { background: #f8fafc; color: #64748b; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h2>Attendance Tracker</h2>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('tracker')">Tracker</button>
+            <button class="tab-btn" onclick="switchTab('history')">History</button>
+        </div>
+    </header>
+
+    <!-- TRACKER VIEW -->
+    <main id="tracker-view" class="view active">
+        <div class="controls">
+            <!-- Add Data -->
+            <div class="card">
+                <h3>Manage Data</h3>
+                <div class="row">
+                    <input type="text" id="input-name" placeholder="Name (e.g. John Doe)" onkeypress="handleEnter(event, 'name')">
+                    <button class="btn-primary" onclick="addEntry('names')">Add Name</button>
+                </div>
+                <div class="row">
+                    <input type="text" id="input-item" placeholder="Item (e.g. 24/11/2025)" onkeypress="handleEnter(event, 'item')">
+                    <button class="btn-primary" onclick="addEntry('items')">Add Item</button>
+                </div>
+            </div>
+
+            <!-- Database Actions -->
+            <div class="card">
+                <h3>Database Actions</h3>
+                <div class="row">
+                    <input type="text" id="filename" placeholder="attendance_db">
+                    <button class="btn-success" onclick="saveDatabase()">Save Excel</button>
+                </div>
+                <div class="row">
+                    <label for="file-upload" class="file-label" style="width:100%">📂 Load Excel File</label>
+                    <input type="file" id="file-upload" accept=".xlsx" hidden onchange="loadDatabase(this)">
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-wrapper">
+            <div id="grid" class="grid">
+                <!-- Grid renders here -->
+            </div>
+        </div>
+    </main>
+
+    <!-- HISTORY VIEW -->
+    <main id="history-view" class="view">
+        <div class="card">
+            <h3>Filter & Export</h3>
+            <div class="row" style="flex-wrap: wrap;">
+                <input type="date" id="date-start" onchange="renderHistory()">
+                <input type="date" id="date-end" onchange="renderHistory()">
+                <button class="btn-danger" onclick="exportPDF()">Export PDF</button>
+            </div>
+        </div>
+        <div class="card" style="overflow-x: auto;">
+            <table>
+                <thead>
+                    <tr><th>Time</th><th>Action</th><th>Detail</th></tr>
+                </thead>
+                <tbody id="history-table-body"></tbody>
+            </table>
+        </div>
+    </main>
+</div>
+
+<!-- 3. Application Logic -->
+<script>
+    // --- STATE MANAGEMENT ---
+    let state = {
+        names: [],
+        items: [],
+        attendance: {}, // key format: "Name_Item"
+        history: []
+    };
+
+    // Initialize
+    window.onload = () => {
+        const saved = localStorage.getItem('attendance_state');
+        if (saved) {
+            try { state = JSON.parse(saved); } 
+            catch(e) { console.error("Save file corrupted, starting fresh"); }
+        }
+        renderGrid();
+    };
+
+    function saveState() {
+        localStorage.setItem('attendance_state', JSON.stringify(state));
+    }
+
+    function logAction(action, detail) {
+        state.history.unshift({
+            timestamp: new Date().toISOString(),
+            action: action,
+            detail: detail
+        });
+        saveState();
+        // If history view is open, refresh it
+        if(document.getElementById('history-view').classList.contains('active')) {
+            renderHistory();
+        }
+    }
+
+    // --- VIEW LOGIC ---
+    function switchTab(tab) {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+        
+        // Find button by text content roughly (simple way) or usage
+        const btns = document.querySelectorAll('.tab-btn');
+        if(tab === 'tracker') btns[0].classList.add('active');
+        if(tab === 'history') btns[1].classList.add('active');
+
+        document.getElementById(`${tab}-view`).classList.add('active');
+        
+        if (tab === 'history') renderHistory();
+    }
+
+    function handleEnter(e, type) {
+        if(e.key === 'Enter') addEntry(type === 'name' ? 'names' : 'items');
+    }
+
+    // --- DATA MANIPULATION ---
+    function addEntry(type) {
+        const inputId = type === 'names' ? 'input-name' : 'input-item';
+        const input = document.getElementById(inputId);
+        const val = input.value.trim();
+
+        if (!val) return;
+        if (state[type].includes(val)) {
+            alert('This entry already exists!');
+            return;
+        }
+
+        state[type].push(val);
+        input.value = '';
+        logAction(`Add ${type.slice(0, -1)}`, val);
+        saveState();
+        renderGrid();
+    }
+
+    // Centralized Click Handler (Event Delegation)
+    document.getElementById('grid').addEventListener('click', (e) => {
+        const target = e.target;
+        
+        // Handle Checkbox Click
+        if (target.classList.contains('cell-check')) {
+            const name = target.dataset.name;
+            const item = target.dataset.item;
+            const key = `${name}_${item}`;
+            
+            state.attendance[key] = !state.attendance[key];
+            saveState();
+            renderGrid();
+            logAction(state.attendance[key] ? 'Check' : 'Uncheck', `${name} - ${item}`);
+        }
+
+        // Handle Remove Button Click
+        // Check closest button in case user clicks the SVG/Icon inside
+        const btn = target.closest('.remove-btn');
+        if (btn) {
+            e.stopPropagation(); // Prevent bubbling
+            const type = btn.dataset.type; // 'names' or 'items'
+            const index = parseInt(btn.dataset.index);
+            const val = state[type][index];
+
+            if (confirm(`Are you sure you want to delete "${val}"?`)) {
+                state[type].splice(index, 1);
+                // Clean up orphaned attendance records (Optional but good)
+                // For simplicity, we just leave them, they won't show up.
+                logAction(`Remove ${type.slice(0, -1)}`, val);
+                saveState();
+                renderGrid();
+            }
+        }
+    });
+
+    function renderGrid() {
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '';
+        
+        // Set CSS Grid Columns: 1 auto (Name) + N equal (Items)
+        const cols = state.items.length + 1;
+        grid.style.gridTemplateColumns = `minmax(150px, auto) repeat(${state.items.length}, minmax(120px, 1fr))`;
+
+        // 1. Top-Left Corner
+        const corner = document.createElement('div');
+        corner.className = 'cell cell-header';
+        corner.textContent = 'Names \\ Items';
+        grid.appendChild(corner);
+
+        // 2. Item Headers (Top Row)
+        state.items.forEach((item, i) => {
+            const cell = document.createElement('div');
+            cell.className = 'cell cell-header';
+            cell.innerHTML = `
+                <span>${item}</span>
+                <button class="remove-btn" data-type="items" data-index="${i}">×</button>
+            `;
+            grid.appendChild(cell);
+        });
+
+        // 3. Rows (Name + Checks)
+        state.names.forEach((name, i) => {
+            // Name Header (Left Col)
+            const nameCell = document.createElement('div');
+            nameCell.className = 'cell cell-header';
+            nameCell.innerHTML = `
+                <span>${name}</span>
+                <button class="remove-btn" data-type="names" data-index="${i}">×</button>
+            `;
+            grid.appendChild(nameCell);
+
+            // Checkboxes
+            state.items.forEach(item => {
+                const cell = document.createElement('div');
+                const key = `${name}_${item}`;
+                const isChecked = !!state.attendance[key];
+                
+                cell.className = `cell cell-check ${isChecked ? 'checked' : ''}`;
+                cell.textContent = isChecked ? '✔' : '';
+                // Store data attributes for the Event Delegate to read
+                cell.dataset.name = name;
+                cell.dataset.item = item;
+                
+                grid.appendChild(cell);
+            });
+        });
+    }
+
+    // --- DATABASE FUNCTIONS (Fixed & Tested) ---
+    function saveDatabase() {
+        if (typeof XLSX === 'undefined') {
+            alert('System is initializing, please wait 2 seconds and try again.');
+            return;
+        }
+
+        const wb = XLSX.utils.book_new();
+
+        // Sheet 1: Attendance Matrix
+        // Create Array of Arrays [ ["Names \ Items", "Day 1", "Day 2"], ["Alice", 1, ""], ... ]
+        const matrix = [];
+        const headerRow = ['Names \\ Items', ...state.items];
+        matrix.push(headerRow);
+
+        state.names.forEach(name => {
+            const row = [name];
+            state.items.forEach(item => {
+                const key = `${name}_${item}`;
+                row.push(state.attendance[key] ? 1 : ''); // 1 for present, empty for absent
+            });
+            matrix.push(row);
+        });
+
+        const wsData = XLSX.utils.aoa_to_sheet(matrix);
+        XLSX.utils.book_append_sheet(wb, wsData, "Attendance");
+
+        // Sheet 2: History Logs
+        const historyData = state.history.map(log => ({
+            Time: log.timestamp,
+            Action: log.action,
+            Detail: log.detail
+        }));
+        const wsHistory = XLSX.utils.json_to_sheet(historyData);
+        XLSX.utils.book_append_sheet(wb, wsHistory, "History");
+
+        // Get Filename
+        let fname = document.getElementById('filename').value.trim() || 'attendance_db';
+        if (!fname.endsWith('.xlsx')) fname += '.xlsx';
+
+        // Trigger Download
+        try {
+            XLSX.writeFile(wb, fname);
+        } catch (e) {
+            alert('Error saving file: ' + e.message);
+        }
+    }
+
+    function loadDatabase(input) {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const wb = XLSX.read(data, { type: 'array' });
+
+                // Load Attendance Sheet
+                const sheetName = wb.SheetNames[0]; // Assume first sheet is data
+                const ws = wb.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1 }); // Header:1 gives array of arrays
+
+                if (jsonData.length < 1) throw new Error("Empty file");
+
+                // Reset State
+                state.names = [];
+                state.items = [];
+                state.attendance = {};
+
+                // Row 0 is Headers: [Ignore, Item1, Item2, ...]
+                const headers = jsonData[0];
+                for (let c = 1; c < headers.length; c++) {
+                    if(headers[c]) state.items.push(String(headers[c]));
+                }
+
+                // Subsequent Rows: [Name, Check, Check, ...]
+                for (let r = 1; r < jsonData.length; r++) {
+                    const row = jsonData[r];
+                    const name = row[0]; // First col is name
+                    if (name) {
+                        state.names.push(String(name));
+                        // Check columns
+                        state.items.forEach((item, idx) => {
+                            // row index matches item index offset by 1
+                            if (row[idx + 1] == 1 || row[idx + 1] === '1' || row[idx + 1] === true) {
+                                state.attendance[`${name}_${item}`] = true;
+                            }
+                        });
+                    }
+                }
+
+                // Load History (Optional, look for sheet named "History")
+                if (wb.Sheets["History"]) {
+                    const histData = XLSX.utils.sheet_to_json(wb.Sheets["History"]);
+                    state.history = histData.map(row => ({
+                        timestamp: row.Time || new Date().toISOString(),
+                        action: row.Action || 'Unknown',
+                        detail: row.Detail || '-'
+                    }));
+                }
+
+                saveState();
+                renderGrid();
+                alert('Database loaded successfully!');
+
+            } catch (err) {
+                console.error(err);
+                alert('Error parsing file. Please ensure it was generated by this app.');
+            }
+            input.value = ''; // Reset input so same file can be loaded again
+        };
+        reader.readAsArrayBuffer(file);
+    }
+
+    // --- HISTORY & PDF ---
+    function renderHistory() {
+        const tbody = document.getElementById('history-table-body');
+        tbody.innerHTML = '';
+
+        const startStr = document.getElementById('date-start').value;
+        const endStr = document.getElementById('date-end').value;
+        
+        // Parse Local Dates correctly
+        const start = startStr ? new Date(startStr + 'T00:00:00') : null;
+        const end = endStr ? new Date(endStr + 'T23:59:59') : null;
+
+        const filtered = state.history.filter(log => {
+            const logDate = new Date(log.timestamp);
+            if (start && logDate < start) return false;
+            if (end && logDate > end) return false;
+            return true;
+        });
+
+        filtered.forEach(log => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td>${new Date(log.timestamp).toLocaleString()}</td>
+                <td>${log.action}</td>
+                <td>${log.detail}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function exportPDF() {
+        if (!window.jspdf) return alert('PDF Lib loading...');
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        doc.text("Attendance History Log", 14, 15);
+        
+        // Extract data currently in the table (respects filters)
+        // Or re-filter from state for cleaner data
+        const rows = [];
+        const startStr = document.getElementById('date-start').value;
+        const endStr = document.getElementById('date-end').value;
+        const start = startStr ? new Date(startStr + 'T00:00:00') : null;
+        const end = endStr ? new Date(endStr + 'T23:59:59') : null;
+
+        state.history.forEach(log => {
+            const d = new Date(log.timestamp);
+            if (start && d < start) return;
+            if (end && d > end) return;
+            rows.push([d.toLocaleString(), log.action, log.detail]);
+        });
+
+        doc.autoTable({
+            head: [['Timestamp', 'Action', 'Detail']],
+            body: rows,
+            startY: 20,
+        });
+
+        doc.save("attendance_history.pdf");
+    }
+</script>
+</body>
+</html>
